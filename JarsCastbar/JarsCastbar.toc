@@ -1,0 +1,9 @@
+## Interface: 120001
+## Title: Jar's Castbar
+## Notes: Customizable player and target cast bars
+## Author: Jar
+## Version: 1.0
+## SavedVariables: JarsCastbarDB
+## OptionalDeps: LibSharedMedia-3.0, SharedMediaAdditionalFonts
+
+JarsCastbar.lua
