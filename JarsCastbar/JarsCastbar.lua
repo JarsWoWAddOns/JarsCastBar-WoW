@@ -537,15 +537,7 @@ end
 SLASH_JARSCASTBAR1 = "/jarscastbar"
 SLASH_JARSCASTBAR2 = "/jcb"
 SlashCmdList["JARSCASTBAR"] = function(msg)
-    if not configFrame then
-        CreateConfigWindow()
-    end
-    
-    if configFrame:IsShown() then
-        configFrame:Hide()
-    else
-        configFrame:Show()
-    end
+    configFrame:SetShown(not configFrame:IsShown())
 end
 
 -- Initialize
@@ -556,6 +548,7 @@ initFrame:SetScript("OnEvent", function(self, event, addonName)
         InitDB()
         CreatePlayerCastbar()
         CreateTargetCastbar()
+        CreateConfigWindow()
         print("|cff00ff00Jar's Castbar|r loaded! Type |cff00ffff/jcb|r to configure.")
     end
 end)
