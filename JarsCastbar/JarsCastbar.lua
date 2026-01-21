@@ -210,13 +210,24 @@ local function OnEvent(self, event, unit)
         name, text, texture, startTime, endTime, isTradeSkill, castID, notInterruptible = UnitCastingInfo(unit)
         if not name then return end
         
-        self.value = (GetTime() - (startTime / 1000))
-        self.maxValue = (endTime - startTime) / 1000
+        -- Wrap arithmetic in pcall to handle secret values in combat
+        local success = pcall(function()
+            self.value = (GetTime() - (startTime / 1000))
+            self.maxValue = (endTime - startTime) / 1000
+            self.Bar:SetMinMaxValues(0, self.maxValue)
+            self.Bar:SetValue(self.value)
+        end)
+        
+        if not success then
+            -- Fallback: just show the bar without precise timing
+            self.value = 0
+            self.maxValue = 1
+            self.Bar:SetMinMaxValues(0, 1)
+            self.Bar:SetValue(0)
+        end
+        
         self.casting = true
         self.channeling = false
-        
-        self.Bar:SetMinMaxValues(0, self.maxValue)
-        self.Bar:SetValue(self.value)
         self.Text:SetText(text)
         self.Icon:SetTexture(texture)
         
@@ -244,21 +255,35 @@ local function OnEvent(self, event, unit)
         name, text, texture, startTime, endTime = UnitCastingInfo(unit)
         if not name then return end
         
-        self.value = (GetTime() - (startTime / 1000))
-        self.maxValue = (endTime - startTime) / 1000
-        self.Bar:SetMinMaxValues(0, self.maxValue)
+        -- Wrap arithmetic in pcall to handle secret values in combat
+        pcall(function()
+            self.value = (GetTime() - (startTime / 1000))
+            self.maxValue = (endTime - startTime) / 1000
+            self.Bar:SetMinMaxValues(0, self.maxValue)
+        end)
         
     elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
         name, text, texture, startTime, endTime, isTradeSkill, notInterruptible = UnitChannelInfo(unit)
         if not name then return end
         
-        self.value = (endTime - startTime) / 1000
-        self.maxValue = self.value
+        -- Wrap arithmetic in pcall to handle secret values in combat
+        local success = pcall(function()
+            self.value = (endTime - startTime) / 1000
+            self.maxValue = self.value
+            self.Bar:SetMinMaxValues(0, self.maxValue)
+            self.Bar:SetValue(self.value)
+        end)
+        
+        if not success then
+            -- Fallback: just show the bar
+            self.value = 1
+            self.maxValue = 1
+            self.Bar:SetMinMaxValues(0, 1)
+            self.Bar:SetValue(1)
+        end
+        
         self.casting = false
         self.channeling = true
-        
-        self.Bar:SetMinMaxValues(0, self.maxValue)
-        self.Bar:SetValue(self.value)
         self.Text:SetText(text)
         self.Icon:SetTexture(texture)
         
