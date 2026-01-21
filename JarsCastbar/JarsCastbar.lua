@@ -565,15 +565,35 @@ SlashCmdList["JARSCASTBAR"] = function(msg)
     configFrame:SetShown(not configFrame:IsShown())
 end
 
+-- Hide Blizzard cast bars
+local function HideBlizzardCastbars()
+    -- Hide player cast bar
+    if PlayerCastingBarFrame then
+        PlayerCastingBarFrame:UnregisterAllEvents()
+        PlayerCastingBarFrame:Hide()
+        PlayerCastingBarFrame:SetAlpha(0)
+    end
+    
+    -- Hide target cast bar
+    if TargetFrameSpellBar then
+        TargetFrameSpellBar:UnregisterAllEvents()
+        TargetFrameSpellBar:Hide()
+        TargetFrameSpellBar:SetAlpha(0)
+    end
+end
+
 -- Initialize
 local initFrame = CreateFrame("Frame")
 initFrame:RegisterEvent("ADDON_LOADED")
+initFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 initFrame:SetScript("OnEvent", function(self, event, addonName)
-    if addonName == "JarsCastbar" then
+    if event == "ADDON_LOADED" and addonName == "JarsCastbar" then
         InitDB()
         CreatePlayerCastbar()
         CreateTargetCastbar()
         CreateConfigWindow()
         print("|cff00ff00Jar's Castbar|r loaded! Type |cff00ffff/jcb|r to configure.")
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        HideBlizzardCastbars()
     end
 end)
