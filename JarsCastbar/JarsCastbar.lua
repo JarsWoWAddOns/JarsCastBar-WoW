@@ -231,7 +231,10 @@ local function OnEvent(self, event, unit)
         self.Text:SetText(text)
         self.Icon:SetTexture(texture)
         
-        if notInterruptible then
+        -- Safely test notInterruptible (may be a secret value)
+        local niOk, niVal = pcall(function() return notInterruptible end)
+        local isNotInterruptible = niOk and (type(niVal) == "boolean") and niVal or false
+        if isNotInterruptible then
             self.Bar:SetStatusBarColor(0.7, 0.7, 0.7)
         else
             self.Bar:SetStatusBarColor(1.0, 0.7, 0.0)
@@ -287,7 +290,10 @@ local function OnEvent(self, event, unit)
         self.Text:SetText(text)
         self.Icon:SetTexture(texture)
         
-        if notInterruptible then
+        -- Safely test notInterruptible (may be a secret value)
+        local niOk2, niVal2 = pcall(function() return notInterruptible end)
+        local isNotInterruptible2 = niOk2 and (type(niVal2) == "boolean") and niVal2 or false
+        if isNotInterruptible2 then
             self.Bar:SetStatusBarColor(0.7, 0.7, 0.7)
         else
             self.Bar:SetStatusBarColor(0.0, 1.0, 0.0)
