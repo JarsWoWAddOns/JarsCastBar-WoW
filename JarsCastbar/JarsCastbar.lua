@@ -99,6 +99,12 @@ local function ToggleTargetCastbar(show)
             targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_UPDATE", "target")
             targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTIBLE", "target")
             targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_NOT_INTERRUPTIBLE", "target")
+            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "target")
+            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "target")
+            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "target")
+            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "target")
+            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "target")
+            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "target")
         else
             targetCastbar:Hide()
             targetCastbar:UnregisterAllEvents()
@@ -164,21 +170,79 @@ local function CreateCastbar(unit)
     })
     frame.IconBorder:SetBackdropBorderColor(0, 0, 0, 1)
     
+    -- Empower stage pips (markers)
+    frame.stagePips = {}
+    for i = 1, 4 do
+        local pip = frame.Bar:CreateTexture(nil, "OVERLAY")
+        pip:SetSize(2, 24)
+        pip:SetColorTexture(0, 0, 0, 0.8)
+        pip:Hide()
+        frame.stagePips[i] = pip
+    end
+    
     frame.unit = unit
     frame.casting = false
     frame.channeling = false
+    frame.empowering = false
+    frame.numStages = 0
+    frame.startTime = 0
+    frame.endTime = 0
+    frame.holdAtMaxTime = 0
+    frame.stageDurations = {}
     
     return frame
 end
 
 -- Update castbar
 local function OnUpdate(self, elapsed)
-    if not self.casting and not self.channeling then
+    if not self.casting and not self.channeling and not self.empowering then
         self:Hide()
         return
     end
     
-    if self.casting then
+    if self.empowering then
+        -- Empowered spells: calculate progress from start time
+        local currentTime = GetTime()
+        self.value = currentTime - self.startTime
+        
+        if self.value >= self.maxValue then
+            self.empowering = false
+            -- Hide stage pips
+            for i = 1, 4 do
+                self.stagePips[i]:Hide()
+            end
+            self:Hide()
+            return
+        end
+        
+        -- Calculate current stage and change color
+        if self.numStages > 0 and self.stageDurations then
+            local elapsedMS = self.value * 1000
+            local cumulativeDuration = 0
+            local currentStage = 0
+            for i = 0, self.numStages - 1 do
+                if self.stageDurations[i] then
+                    cumulativeDuration = cumulativeDuration + self.stageDurations[i]
+                    if elapsedMS < cumulativeDuration then
+                        currentStage = i
+                        break
+                    end
+                    currentStage = i + 1
+                end
+            end
+            
+            -- Color based on stage
+            if currentStage == 0 then
+                self.Bar:SetStatusBarColor(0.2, 0.5, 0.8)  -- Dark blue
+            elseif currentStage == 1 then
+                self.Bar:SetStatusBarColor(0.3, 0.7, 1.0)  -- Medium blue
+            elseif currentStage == 2 then
+                self.Bar:SetStatusBarColor(0.5, 0.8, 1.0)  -- Bright blue
+            else
+                self.Bar:SetStatusBarColor(0.7, 0.6, 1.0)  -- Purple
+            end
+        end
+    elseif self.casting then
         self.value = self.value + elapsed
         if self.value >= self.maxValue then
             self.casting = false
@@ -186,6 +250,7 @@ local function OnUpdate(self, elapsed)
             return
         end
     elseif self.channeling then
+        -- Regular channels: countdown
         self.value = self.value - elapsed
         if self.value <= 0 then
             self.channeling = false
@@ -196,7 +261,14 @@ local function OnUpdate(self, elapsed)
     
     self.Bar:SetValue(self.value)
     
-    local timeLeft = self.channeling and self.value or (self.maxValue - self.value)
+    local timeLeft
+    if self.empowering or self.casting then
+        -- Show time remaining
+        timeLeft = self.maxValue - self.value
+    else
+        -- Show time remaining for channels
+        timeLeft = self.value
+    end
     self.Time:SetText(string.format("%.1f", timeLeft))
 end
 
@@ -241,6 +313,118 @@ local function OnEvent(self, event, unit)
         end
         
         self:Show()
+        
+    elseif event == "UNIT_SPELLCAST_EMPOWER_START" then
+        -- Try UnitCastingInfo first, then UnitChannelInfo as fallback
+        name, text, texture, startTime, endTime, isTradeSkill, castID, notInterruptible = UnitCastingInfo(unit)
+        if not name then
+            name, text, texture, startTime, endTime, isTradeSkill, castID, notInterruptible = UnitChannelInfo(unit)
+        end
+        if not name then return end
+        
+        -- Hide any previous stage pips
+        for i = 1, 4 do
+            self.stagePips[i]:Hide()
+        end
+        
+        -- Get empower stage information
+        local numStages = 0
+        local stageDurations = {}
+        local totalDuration = 0
+        
+        for i = 0, 3 do
+            local stageDuration = GetUnitEmpowerStageDuration and GetUnitEmpowerStageDuration(unit, i) or 0
+            if stageDuration and stageDuration > 0 then
+                numStages = i + 1
+                stageDurations[i] = stageDuration
+                totalDuration = totalDuration + stageDuration
+            end
+        end
+        
+        -- Get hold at max time
+        local holdAtMaxTime = GetUnitEmpowerHoldAtMaxTime and GetUnitEmpowerHoldAtMaxTime(unit) or 0
+        
+        -- Empowered spells are CASTING (forward progress), not channeling
+        local success = pcall(function()
+            self.startTime = startTime / 1000
+            self.endTime = endTime / 1000
+            self.value = (GetTime() - self.startTime)  -- Current progress
+            self.maxValue = self.endTime - self.startTime
+            self.numStages = numStages
+            self.stageDurations = stageDurations
+            self.holdAtMaxTime = holdAtMaxTime
+            self.Bar:SetMinMaxValues(0, self.maxValue)
+            self.Bar:SetValue(self.value)
+        end)
+        
+        if not success then
+            self.startTime = GetTime()
+            self.value = 0
+            self.maxValue = 3
+            self.endTime = self.startTime + 3
+            self.numStages = numStages
+            self.stageDurations = stageDurations
+            self.holdAtMaxTime = holdAtMaxTime
+            self.Bar:SetMinMaxValues(0, 3)
+            self.Bar:SetValue(0)
+        end
+        
+        -- Position stage pips
+        if numStages > 0 then
+            local cumulativeDuration = 0
+            for i = 0, numStages - 2 do  -- Don't put a pip at the very end
+                if stageDurations[i] then
+                    cumulativeDuration = cumulativeDuration + stageDurations[i]
+                    local percent = (cumulativeDuration / 1000) / self.maxValue
+                    if percent > 0 and percent < 1 then
+                        local pip = self.stagePips[i + 1]
+                        pip:ClearAllPoints()
+                        pip:SetPoint("BOTTOM", self.Bar, "BOTTOMLEFT", self.Bar:GetWidth() * percent, 0)
+                        pip:SetPoint("TOP", self.Bar, "TOPLEFT", self.Bar:GetWidth() * percent, 0)
+                        pip:Show()
+                    end
+                end
+            end
+        end
+        
+        self.casting = false
+        self.channeling = false
+        self.empowering = true
+        self.Text:SetText(text)
+        self.Icon:SetTexture(texture)
+        
+        -- Blue color for empower
+        self.Bar:SetStatusBarColor(0.3, 0.7, 1.0)
+        
+        self:Show()
+        
+    elseif event == "UNIT_SPELLCAST_EMPOWER_STOP" then
+        if self.empowering then
+            self.empowering = false
+            self.channeling = false
+            self.casting = false
+            -- Hide stage pips
+            for i = 1, 4 do
+                self.stagePips[i]:Hide()
+            end
+            self:Hide()
+        end
+        
+    elseif event == "UNIT_SPELLCAST_EMPOWER_UPDATE" then
+        -- Try UnitCastingInfo first, then UnitChannelInfo as fallback
+        name, text, texture, startTime, endTime = UnitCastingInfo(unit)
+        if not name then
+            name, text, texture, startTime, endTime = UnitChannelInfo(unit)
+        end
+        if not name then return end
+        
+        -- Update the timing (may extend as they hold longer)
+        pcall(function()
+            self.startTime = startTime / 1000
+            self.endTime = endTime / 1000
+            self.maxValue = self.endTime - self.startTime
+            self.Bar:SetMinMaxValues(0, self.maxValue)
+        end)
         
     elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_INTERRUPTED" then
         -- Don't hide if we're channeling and the channel is still active
@@ -338,6 +522,12 @@ local function CreatePlayerCastbar()
     playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_UPDATE", "player")
     playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTIBLE", "player")
     playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_NOT_INTERRUPTIBLE", "player")
+    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "player")
+    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "player")
+    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "player")
+    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "player")
+    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "player")
+    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "player")
     
     playerCastbar:Hide()
 end
