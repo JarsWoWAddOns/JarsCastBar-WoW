@@ -102,9 +102,6 @@ local function ToggleTargetCastbar(show)
             targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "target")
             targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "target")
             targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "target")
-            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "target")
-            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "target")
-            targetCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "target")
         else
             targetCastbar:Hide()
             targetCastbar:UnregisterAllEvents()
@@ -303,14 +300,13 @@ local function OnEvent(self, event, unit)
         self.Text:SetText(text)
         self.Icon:SetTexture(texture)
         
-        -- Safely test notInterruptible (may be a secret value)
-        local niOk, niVal = pcall(function() return notInterruptible end)
-        local isNotInterruptible = niOk and (type(niVal) == "boolean") and niVal or false
-        if isNotInterruptible then
-            self.Bar:SetStatusBarColor(0.7, 0.7, 0.7)
-        else
-            self.Bar:SetStatusBarColor(1.0, 0.7, 0.0)
-        end
+        -- Set bar color based on interruptibility (notInterruptible may be secret in WoW 12.0)
+        self.Bar:SetStatusBarColor(1.0, 0.7, 0.0)  -- Default: interruptible
+        pcall(function()
+            if notInterruptible then
+                self.Bar:SetStatusBarColor(0.7, 0.7, 0.7)
+            end
+        end)
         
         self:Show()
         
@@ -474,14 +470,13 @@ local function OnEvent(self, event, unit)
         self.Text:SetText(text)
         self.Icon:SetTexture(texture)
         
-        -- Safely test notInterruptible (may be a secret value)
-        local niOk2, niVal2 = pcall(function() return notInterruptible end)
-        local isNotInterruptible2 = niOk2 and (type(niVal2) == "boolean") and niVal2 or false
-        if isNotInterruptible2 then
-            self.Bar:SetStatusBarColor(0.7, 0.7, 0.7)
-        else
-            self.Bar:SetStatusBarColor(0.0, 1.0, 0.0)
-        end
+        -- Set bar color based on interruptibility (notInterruptible may be secret in WoW 12.0)
+        self.Bar:SetStatusBarColor(0.0, 1.0, 0.0)  -- Default: interruptible channel
+        pcall(function()
+            if notInterruptible then
+                self.Bar:SetStatusBarColor(0.7, 0.7, 0.7)
+            end
+        end)
         
         self:Show()
         
@@ -493,8 +488,11 @@ local function OnEvent(self, event, unit)
     elseif event == "UNIT_SPELLCAST_CHANNEL_UPDATE" then
         name, text, texture, startTime, endTime = UnitChannelInfo(unit)
         if not name then return end
-        
-        self.value = (endTime - startTime) / 1000
+
+        -- Wrap arithmetic in pcall to handle secret values in combat
+        pcall(function()
+            self.value = (endTime - startTime) / 1000
+        end)
         
     elseif event == "UNIT_SPELLCAST_INTERRUPTIBLE" then
         self.Bar:SetStatusBarColor(self.channeling and 0.0 or 1.0, self.channeling and 1.0 or 0.7, 0.0)
@@ -525,10 +523,7 @@ local function CreatePlayerCastbar()
     playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "player")
     playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "player")
     playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "player")
-    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", "player")
-    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", "player")
-    playerCastbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", "player")
-    
+
     playerCastbar:Hide()
 end
 
@@ -650,22 +645,16 @@ local function CreateConfigWindow()
     fontLabel:SetText("Font:")
     
     -- Font dropdown
-    local fontDropdown = CreateFrame("Frame", "JarsCastbar_FontDropdown", configFrame, "UIDropDownMenuTemplate")
-    fontDropdown:SetPoint("TOPLEFT", fontLabel, "BOTTOMLEFT", -15, -5)
-    
-    UIDropDownMenu_SetWidth(fontDropdown, 380)
-    UIDropDownMenu_SetText(fontDropdown, JarsCastbarDB.font)
-    
-    UIDropDownMenu_Initialize(fontDropdown, function(self, level)
+    local fontDropdown = CreateFrame("DropdownButton", nil, configFrame, "WowStyle1DropdownTemplate")
+    fontDropdown:SetPoint("TOPLEFT", fontLabel, "BOTTOMLEFT", 0, -5)
+    fontDropdown:SetWidth(400)
+    fontDropdown:SetDefaultText(JarsCastbarDB.font or "Friz Quadrata TT")
+    fontDropdown:SetupMenu(function(_, rootDescription)
         local fonts = LSM and LSM:List("font") or {"Friz Quadrata TT"}
         for _, fontName in ipairs(fonts) do
-            local info = UIDropDownMenu_CreateInfo()
-            info.text = fontName
-            info.func = function()
-                UIDropDownMenu_SetText(fontDropdown, fontName)
-                UpdateFont(fontName)
-            end
-            UIDropDownMenu_AddButton(info)
+            rootDescription:CreateRadio(fontName,
+                function() return JarsCastbarDB.font == fontName end,
+                function() UpdateFont(fontName) end)
         end
     end)
     
@@ -675,22 +664,16 @@ local function CreateConfigWindow()
     textureLabel:SetText("Texture:")
     
     -- Texture dropdown
-    local textureDropdown = CreateFrame("Frame", "JarsCastbar_TextureDropdown", configFrame, "UIDropDownMenuTemplate")
-    textureDropdown:SetPoint("TOPLEFT", textureLabel, "BOTTOMLEFT", -15, -5)
-    
-    UIDropDownMenu_SetWidth(textureDropdown, 380)
-    UIDropDownMenu_SetText(textureDropdown, JarsCastbarDB.texture)
-    
-    UIDropDownMenu_Initialize(textureDropdown, function(self, level)
+    local textureDropdown = CreateFrame("DropdownButton", nil, configFrame, "WowStyle1DropdownTemplate")
+    textureDropdown:SetPoint("TOPLEFT", textureLabel, "BOTTOMLEFT", 0, -5)
+    textureDropdown:SetWidth(400)
+    textureDropdown:SetDefaultText(JarsCastbarDB.texture or "Blizzard")
+    textureDropdown:SetupMenu(function(_, rootDescription)
         local textures = LSM and LSM:List("statusbar") or {"Blizzard"}
         for _, textureName in ipairs(textures) do
-            local info = UIDropDownMenu_CreateInfo()
-            info.text = textureName
-            info.func = function()
-                UIDropDownMenu_SetText(textureDropdown, textureName)
-                UpdateTexture(textureName)
-            end
-            UIDropDownMenu_AddButton(info)
+            rootDescription:CreateRadio(textureName,
+                function() return JarsCastbarDB.texture == textureName end,
+                function() UpdateTexture(textureName) end)
         end
     end)
     
@@ -741,8 +724,8 @@ local function CreateConfigWindow()
         playerYSlider:SetValue(-200)
         targetYSlider:SetValue(-250)
         widthSlider:SetValue(300)
-        UIDropDownMenu_SetText(fontDropdown, "Friz Quadrata TT")
-        UIDropDownMenu_SetText(textureDropdown, "Blizzard")
+        fontDropdown:GenerateMenu()
+        textureDropdown:GenerateMenu()
         UpdatePlayerPosition(-200)
         UpdateTargetPosition(-250)
         UpdateWidth(300)
